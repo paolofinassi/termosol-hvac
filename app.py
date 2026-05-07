@@ -1,23 +1,65 @@
 from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
 
-app = FastAPI(title="TERMOSOL HVAC - TECH ENGINE")
+app = FastAPI(title="TERMOSOL HVAC - INTERFACE")
 
+# -----------------------------
+# DATI CATALOGO (SEMPLIFICATO MA REALISTICO)
+# -----------------------------
 UE_MODELS = {
-    "RXM20": {"power_kw": 2.0, "phase": "mono", "max_ui": 2},
-    "RXM25": {"power_kw": 2.5, "phase": "mono", "max_ui": 2},
-    "MXM40": {"power_kw": 4.0, "phase": "multi", "max_ui": 4},
+    "RXM20": {"power": 2.0},
+    "RXM25": {"power": 2.5},
+    "MXM40": {"power": 4.0},
 }
 
 UI_MODELS = {
-    "FTXM20": {"power_kw": 2.0},
-    "FTXM25": {"power_kw": 2.5},
-    "FTXM35": {"power_kw": 3.5},
+    "FTXM20": {"power": 2.0},
+    "FTXM25": {"power": 2.5},
+    "FTXM35": {"power": 3.5},
 }
 
-@app.get("/")
+# -----------------------------
+# HOME (INTERFACCIA VERA)
+# -----------------------------
+@app.get("/", response_class=HTMLResponse)
 def home():
-    return {"status": "TECH ENGINE ONLINE"}
+    return """
+    <html>
+    <head>
+        <title>TERMOSOL HVAC</title>
+    </head>
+    <body style="font-family: Arial; padding: 30px;">
+        <h1>TERMOSOL HVAC - CONFIGURATORE</h1>
 
+        <h3>Test compatibilità</h3>
+
+        <form action="/check" method="get">
+            UE:
+            <select name="ue">
+                <option>RXM20</option>
+                <option>RXM25</option>
+                <option>MXM40</option>
+            </select>
+
+            UI:
+            <select name="ui">
+                <option>FTXM20</option>
+                <option>FTXM25</option>
+                <option>FTXM35</option>
+            </select>
+
+            Quantità:
+            <input type="number" name="qty_ui" value="1" min="1">
+
+            <button type="submit">Verifica</button>
+        </form>
+    </body>
+    </html>
+    """
+
+# -----------------------------
+# LOGICA TECNICA
+# -----------------------------
 @app.get("/check")
 def check(ue: str, ui: str, qty_ui: int = 1):
 
@@ -25,28 +67,25 @@ def check(ue: str, ui: str, qty_ui: int = 1):
     ui_data = UI_MODELS.get(ui)
 
     if not ue_data or not ui_data:
-        return {"status": "ERROR", "message": "modello non trovato"}
+        return {"error": "modello non trovato"}
 
-    result = {
+    total_ui = ui_data["power"] * qty_ui
+
+    status = "OK"
+    issues = []
+
+    if qty_ui > 2:
+        status = "NO"
+        issues.append("Troppi split collegati")
+
+    if total_ui > ue_data["power"] * 1.2:
+        status = "WARNING"
+        issues.append("Potenza al limite")
+
+    return {
         "ue": ue,
         "ui": ui,
-        "qty_ui": qty_ui,
-        "status": "OK",
-        "issues": []
+        "qty": qty_ui,
+        "status": status,
+        "issues": issues
     }
-
-    total_ui_power = ui_data["power_kw"] * qty_ui
-
-    if qty_ui > ue_data["max_ui"]:
-        result["status"] = "NO"
-        result["issues"].append("Too many indoor units")
-
-    if total_ui_power > ue_data["power_kw"] * 1.2:
-        result["status"] = "WARNING"
-        result["issues"].append("Power borderline")
-
-    if ue_data["phase"] == "mono" and qty_ui > 1:
-        result["status"] = "WARNING"
-        result["issues"].append("Mono unit with multiple indoor")
-
-    return result
